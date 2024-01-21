@@ -86,15 +86,22 @@ def json_to_csv(json_file, csv_file):
 
 json_to_csv('C:/Users/DELL 5480/Desktop/INTERSHIP_10ALYTICS/downloaded_dataengineering_jobs.json', 'C:/Users/DELL 5480/Desktop/INTERSHIP_10ALYTICS/output.csv')
 
-DATA TRANSFORMATION STEPS
+#DATA TRANSFORMATION STEPS
 
 #creating the transformed data s3 bucket--step 1
+
+access_key2 = config['AWS']['access_key2']
+secret_key2 = config['AWS']['secret_key2']
+bucket_name2 = config['AWS']['bucket_name2']
+region2 = config['AWS']['region2']
+local_file_path2 = config['AWS']['local_file_path2']
+s3_key2 = config['AWS']['s3_key2']
 
 print(region2, bucket_name2)
 client = boto3.client(
     's3',
-    aws_access_key_id=access_key2,
-    aws_secret_access_key=secret_key2
+    aws_access_key_id=access_key,
+    aws_secret_access_key=secret_key
 )
 
 client.create_bucket(
@@ -105,12 +112,6 @@ client.create_bucket(
 )
 
 #S3 bucket information for transformed data
-access_key2 = config['AWS']['access_key2']
-secret_key2 = config['AWS']['secret_key2']
-bucket_name2 = config['AWS']['bucket_name2']
-region2 = config['AWS']['region2']
-local_file_path2 = config['AWS']['local_file_path2']
-s3_key2 = config['AWS']['s3_key2']
 
 def select_and_save(dataengineering_jobs, transformed_job_data):
     with open(dataengineering_jobs, 'r') as file:

@@ -3,14 +3,13 @@ import requests
 import json
 import pandas as pd
 import boto3
-import configparser
 import redshift_connector
 import psycopg2
 import logging
 import csv
 from sqlalchemy import create_engine
 from botocore.exceptions import NoCredentialsError
-
+from create import dev_table
 
 config=configparser.ConfigParser()
 config.read('.env')
@@ -21,11 +20,12 @@ bucket_name= config['AWS']['bucket_name']
 region= config['AWS']['region']
 local_file_path= config['AWS']['local_file_path']
 s3_key= config['AWS']['s3_key']
+role= config['AWS']['arn']
 
-db_host=config['DB_CONN']['host']
-db_user=config['DB_CONN']['user']
-db_password=config['DB_CONN']['password']
-db_database=config['DB_CONN']['database']
+db_host=config['DB_CONN']['db_host']
+db_user=config['DB_CONN']['db_user']
+db_password=config['DB_CONN']['db_password']
+db_database=config['DB_CONN']['db_database']
 
 dwh_host=config['DWH_CONN']['host']
 dwh_user=config['DWH_CONN']['user']
@@ -149,42 +149,76 @@ s3_key2 = config['AWS']['s3_key2']
 #         print("Credentials not available or incorrect.")
 
 # select_and_save('dataengineering_jobs.json', 'transformed_job_data.csv')
+# conn = create_engine(f"postgresql+psycopg2://{db_user}:{db_password}@{db_host}:5432/{db_database}")
 
-conn = create_engine(f'postgresql+psycopg2://{db_user}:{db_password}@{db_host}:5432/{db_database}')
 
 db_table = ['dataengineering_jobs']
 
+# for table in db_table:
+#     query =f'SELECT * FROM {table}'
+#     logging.info(f'======== Executing {query}')
+#     df= pd.read_sql_query(query, conn)
+
+#     df.to_csv(
+#         f's3://{bucket_name2}/{table}.csv',
+#         index= False,
+#         storage_options= {
+#             'key': access_key,
+#             'secret': secret_key}
+#     )
+
+
+# # To pull data from the datalake to the data warehous
+dwh_conn = redshift_connector.connect(
+    host=dwh_host,
+    database=dwh_database,
+    user=dwh_user,
+    password=dwh_password,
+    timeout= 40
+ )
+print ('DWH connection is established')
+cursor=dwh_conn.cursor()
+
+dev_schema = 'dev'
+staging_schema= 'redshift'
+cursor.execute(f'''CREATE SCHEMA {dev_schema};
+CREATE TABLE IF NOT EXISTS dataengineering_jobs 
+(job_id character varying PRIMARY KEY NOT NULL,
+employer_website character varying,
+job_employment_type character varying
+job_title character varying,
+job_apply_link character varying,
+job_description character varying,
+job_city text,
+job_country text,
+job_posted_at_timestamp bigint,
+employer_company_type character varying
+);''')
+print ('DWH connection established')
+
+
+#-- Create a dev schema
+cursor.execute(f'''CREATE SCHEMA {dev_schema}:''')
+dwh_conn.commit()
+
+#--Create the tables
+for query in dev_table:
+    print(f'......... {query[:30]}')
+    cursor.execute(query)
+    dwh_conn.commit()
+
+#-- copy tables from s3
 for table in db_table:
-    query =f'SELECT * FROM {table}'
-    logging.info(f'======== Executing {query}')
-    df= pd.read_sql_query(query, conn)
+    cursor.execute(f'''
+        COPY {dev_schema}.{table}
+        FROM 's3://{bucket_name2}/{table}.csv'
+        IAM_role '{role}'
+        DELIMITER ','
+        IGNOREHEADER 1;
+''')  
+dwh_conn.commit()
 
-    df.to_csv(
-        f's3://{bucket_name2}/{table}.csv',
-        index= False,
-        storage_options= {
-            'key': access_key,
-            'secret': secret_key}
-    )
-
-
-# # To pull data from the datalake to the data warehouse
-# dwh_conn = redshift_connector.connect(
-#     host=dwh_host,
-#     database=dwh_database,
-#     user=dwh_user,
-#     password=dwh_password'
-#  )
-# print ('DWH connection established')
-# cursor= dwh_conn.cursor()
-# dev_schema = 'dev'
-# staging_schema= 'redshift'
-# #-- Create a dev schema
-# cursor.execute(f'''CREATE SCHEMA {dev_schema}:''')
-# #--Create the tables
-# #-- copy tables from s3
-
-
-
+cursor.close()
+dwh_conn.close()
 
 
